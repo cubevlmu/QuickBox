@@ -1,13 +1,12 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.QuickBox" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="android:windowDisablePreview">true</item>
-        <item name="android:backgroundDimEnabled">false</item>
-        <item name="android:windowNoTitle">true</item>
-        <item name="android:windowFullscreen">true</item>
-        <item name="android:windowIsTranslucent">true</item>
-        <item name="android:windowAnimationStyle">@android:style/Animation.Translucent</item>
+    <!-- 启动用 theme（不透明） -->
+    <style name="Theme.QuickBox.Launch" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="windowSplashScreenBackground">@android:color/transparent</item>
+        <item name="windowSplashScreenAnimatedIcon">@null</item>
+        <item name="postSplashScreenTheme">@style/Theme.QuickBox</item>
     </style>
 
-    <style name="Theme.QuickBox" parent="Base.Theme.QuickBox" />
+
+    <style name="Theme.QuickBox" parent="Theme.Material3.DayNight.NoActionBar" />
 </resources>

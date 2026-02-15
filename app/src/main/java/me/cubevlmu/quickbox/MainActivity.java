@@ -4,12 +4,17 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.widget.EditText;
 import android.widget.Toast;
+import android.window.SplashScreenView;
+
+import androidx.core.splashscreen.SplashScreen;
 
 import androidx.annotation.RequiresApi;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -19,7 +24,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-public class MainActivity extends android.app.Activity {
+public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
 
     private final List<ResolveInfo> allApps = new ArrayList<>();
     private final List<ResolveInfo> filteredApps = new ArrayList<>();
@@ -33,11 +38,12 @@ public class MainActivity extends android.app.Activity {
         super.onPause();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setContentView(R.layout.activity_main);
+
         pm = getPackageManager();
 
         EditText searchBox = findViewById(R.id.searchBox);
@@ -47,7 +53,11 @@ public class MainActivity extends android.app.Activity {
         mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
 
         List<ResolveInfo> resolveInfos = pm.queryIntentActivities(mainIntent, 0);
-        resolveInfos.sort(Comparator.comparing(info -> info.loadLabel(pm).toString(), String.CASE_INSENSITIVE_ORDER));
+        java.util.Collections.sort(resolveInfos, (a, b) -> {
+            String labelA = a.loadLabel(pm).toString();
+            String labelB = b.loadLabel(pm).toString();
+            return String.CASE_INSENSITIVE_ORDER.compare(labelA, labelB);
+        });
 
         allApps.addAll(resolveInfos);
         filteredApps.addAll(resolveInfos);
