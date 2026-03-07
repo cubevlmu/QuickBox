@@ -1,31 +1,44 @@
 # Quick Box
 
-Quick Box 是一个 Flutter 实现的 Android 快速启动器。
+Quick Box is a Flutter-based Android app launcher focused on fast search and one-tap app launch.
 
-## 功能
+## Features
 
-- 搜索应用
-- 点击启动应用
-- 获取设备上全部可启动应用
-- 应用图标按需加载（降低启动崩溃风险）
+- Real-time app search
+- One-tap app launch
+- Auto-close launcher after launching an app
+- Shows launchable apps installed on the device
+- App icons with visible-range batch loading for smoother scrolling
 
-## 平台说明
+## Platform Support
 
-- 仅支持 Android
-- 不支持 Windows / iOS / macOS / Linux
+- Android only
+- Not supported: Windows, iOS, macOS, Linux, Web
 
-## 运行
+## Run
 
 ```bash
 flutter pub get
 flutter run
 ```
 
-## Android 权限与可见性
+## Build APK
 
-`android/app/src/main/AndroidManifest.xml` 已包含:
+```bash
+flutter build apk --debug
+flutter build apk --release
+```
+
+## Android Notes
+
+`android/app/src/main/AndroidManifest.xml` includes:
 
 - `android.permission.QUERY_ALL_PACKAGES`
-- launcher intent 的 `<queries>` 配置
+- Launcher visibility `<queries>` config
 
-如果后续上架应用商店，需要按商店政策提供使用说明。
+This app uses package visibility APIs to discover launchable apps. If you publish to Google Play, make sure your policy declaration matches your actual use case.
+
+## Android 12+ Splash Behavior
+
+Android 12 and above always show a system splash screen at startup.
+This project minimizes it visually (plain background + transparent splash icon), but it cannot be fully disabled by app code.
