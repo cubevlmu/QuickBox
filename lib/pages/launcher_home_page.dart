@@ -1,0 +1,266 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../models/launchable_app.dart';
+import '../services/app_launcher_service.dart';
+
+class LauncherHomePage extends StatefulWidget {
+  const LauncherHomePage({super.key});
+
+  @override
+  State<LauncherHomePage> createState() => _LauncherHomePageState();
+}
+
+class _LauncherHomePageState extends State<LauncherHomePage> {
+  static const double _rowHeight = 68;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
+  List<LaunchableApp> _apps = <LaunchableApp>[];
+  String _searchKeyword = '';
+  List<LaunchableApp> _filteredApps = <LaunchableApp>[];
+  bool _loading = true;
+  String? _error;
+  Timer? _iconLoadDebounce;
+  bool _iconBatchLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+    _scrollController.addListener(_onListScrolled);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadApps();
+    });
+  }
+
+  @override
+  void dispose() {
+    _iconLoadDebounce?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchKeyword = _searchController.text.trim().toLowerCase();
+      _filteredApps = _buildFilteredApps(_searchKeyword);
+    });
+    _scheduleVisibleIconLoad();
+  }
+
+  void _onListScrolled() {
+    _scheduleVisibleIconLoad();
+  }
+
+  Future<void> _loadApps({bool forceRefresh = false}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final List<LaunchableApp> apps = await AppLauncherService.getApps(
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) return;
+      setState(() {
+        _apps = apps;
+        _filteredApps = _buildFilteredApps(_searchKeyword);
+        _loading = false;
+      });
+      _scheduleVisibleIconLoad(immediate: true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _launchApp(LaunchableApp app) async {
+    final bool ok = await AppLauncherService.launch(app);
+    if (!mounted) return;
+
+    if (ok) {
+      await SystemNavigator.pop();
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('无法启动: ${app.name}')));
+  }
+
+  List<LaunchableApp> _buildFilteredApps(String keyword) {
+    if (keyword.isEmpty) return _apps;
+    return _apps
+        .where((LaunchableApp app) => app.searchKey.contains(keyword))
+        .toList();
+  }
+
+  void _applySearchAction() {
+    _searchFocusNode.unfocus();
+    _scheduleVisibleIconLoad(immediate: true);
+  }
+
+  void _scheduleVisibleIconLoad({bool immediate = false}) {
+    _iconLoadDebounce?.cancel();
+    _iconLoadDebounce = Timer(
+      Duration(milliseconds: immediate ? 0 : 90),
+      _loadVisibleIconsBatch,
+    );
+  }
+
+  Future<void> _loadVisibleIconsBatch() async {
+    if (!mounted || _loading || _filteredApps.isEmpty || _iconBatchLoading) {
+      return;
+    }
+    if (!_scrollController.hasClients) return;
+
+    final double offset = _scrollController.offset;
+    final double viewport = _scrollController.position.viewportDimension;
+    final int start = (offset / _rowHeight).floor().clamp(
+      0,
+      _filteredApps.length - 1,
+    );
+    final int end = ((offset + viewport) / _rowHeight).ceil().clamp(
+      0,
+      _filteredApps.length,
+    );
+    final int padStart = (start - 12).clamp(0, _filteredApps.length);
+    final int padEnd = (end + 24).clamp(0, _filteredApps.length);
+
+    final List<String> packageNames = <String>[];
+    for (int i = padStart; i < padEnd; i++) {
+      final String packageName = _filteredApps[i].id;
+      if (AppLauncherService.getCachedAppIcon(packageName) == null) {
+        packageNames.add(packageName);
+      }
+      if (packageNames.length >= 24) break;
+    }
+    if (packageNames.isEmpty) return;
+
+    _iconBatchLoading = true;
+    try {
+      final int added = await AppLauncherService.fetchIconsBatch(packageNames);
+      if (added > 0 && mounted) {
+        setState(() {});
+      }
+    } finally {
+      _iconBatchLoading = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => _applySearchAction(),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        hintText: "搜索..."
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => _loadApps(forceRefresh: true),
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(child: _buildBody()),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(child: Text('加载失败: $_error'));
+    }
+
+    if (_apps.isEmpty) {
+      return const Center(child: Text('当前平台暂无可用应用列表'));
+    }
+
+    if (_filteredApps.isEmpty) {
+      return const Center(child: Text('没有匹配结果'));
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduleVisibleIconLoad();
+    });
+
+    return ListView.builder(
+      controller: _scrollController,
+      itemCount: _filteredApps.length,
+      itemExtent: _rowHeight,
+      addAutomaticKeepAlives: false,
+      itemBuilder: (BuildContext context, int index) {
+        final LaunchableApp app = _filteredApps[index];
+        final Uint8List? iconBytes = AppLauncherService.getCachedAppIcon(
+          app.id,
+        );
+        return Container(
+          key: ValueKey<String>(app.id),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: Color(0x11000000))),
+          ),
+          child: ListTile(
+            dense: true,
+            leading: _buildLeadingIcon(iconBytes),
+            title: Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(
+              app.hint,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () => _launchApp(app),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLeadingIcon(Uint8List? iconBytes) {
+    if (iconBytes == null || iconBytes.isEmpty) {
+      return const Icon(Icons.android, size: 28);
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.memory(
+        iconBytes,
+        width: 30,
+        height: 30,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+      ),
+    );
+  }
+}
