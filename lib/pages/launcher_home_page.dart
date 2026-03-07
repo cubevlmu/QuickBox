@@ -21,6 +21,7 @@ class LauncherHomePage extends StatefulWidget {
 
 class _LauncherHomePageState extends State<LauncherHomePage> {
   static const double _rowHeight = 68;
+  static const int _iconBatchSize = 8;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
@@ -31,12 +32,12 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
   String? _error;
   Timer? _iconLoadDebounce;
   bool _iconBatchLoading = false;
+  bool _isUserScrolling = false;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    _scrollController.addListener(_onListScrolled);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadApps();
@@ -57,10 +58,6 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       _searchKeyword = _searchController.text.trim().toLowerCase();
       _filteredApps = _buildFilteredApps(_searchKeyword);
     });
-    _scheduleVisibleIconLoad();
-  }
-
-  void _onListScrolled() {
     _scheduleVisibleIconLoad();
   }
 
@@ -119,13 +116,17 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
   void _scheduleVisibleIconLoad({bool immediate = false}) {
     _iconLoadDebounce?.cancel();
     _iconLoadDebounce = Timer(
-      Duration(milliseconds: immediate ? 0 : 90),
+      Duration(milliseconds: immediate ? 0 : 120),
       _loadVisibleIconsBatch,
     );
   }
 
   Future<void> _loadVisibleIconsBatch() async {
-    if (!mounted || _loading || _filteredApps.isEmpty || _iconBatchLoading) {
+    if (!mounted ||
+        _loading ||
+        _filteredApps.isEmpty ||
+        _iconBatchLoading ||
+        _isUserScrolling) {
       return;
     }
     if (!_scrollController.hasClients) return;
@@ -140,8 +141,8 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       0,
       _filteredApps.length,
     );
-    final int padStart = (start - 12).clamp(0, _filteredApps.length);
-    final int padEnd = (end + 24).clamp(0, _filteredApps.length);
+    final int padStart = (start - 8).clamp(0, _filteredApps.length);
+    final int padEnd = (end + 16).clamp(0, _filteredApps.length);
 
     final List<String> packageNames = <String>[];
     for (int i = padStart; i < padEnd; i++) {
@@ -149,18 +150,19 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       if (AppLauncherService.getCachedAppIcon(packageName) == null) {
         packageNames.add(packageName);
       }
-      if (packageNames.length >= 24) break;
+      if (packageNames.length >= _iconBatchSize) break;
     }
     if (packageNames.isEmpty) return;
 
     _iconBatchLoading = true;
     try {
-      final int added = await AppLauncherService.fetchIconsBatch(packageNames);
-      if (added > 0 && mounted) {
-        setState(() {});
-      }
+      await AppLauncherService.fetchIconsBatch(packageNames);
     } finally {
       _iconBatchLoading = false;
+    }
+
+    if (mounted && !_isUserScrolling) {
+      _scheduleVisibleIconLoad();
     }
   }
 
@@ -183,7 +185,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
                         isDense: true,
-                        hintText: "搜索..."
+                        hintText: "搜索...",
                       ),
                     ),
                   ),
@@ -223,34 +225,60 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       _scheduleVisibleIconLoad();
     });
 
-    return ListView.builder(
-      controller: _scrollController,
-      itemCount: _filteredApps.length,
-      itemExtent: _rowHeight,
-      addAutomaticKeepAlives: false,
-      itemBuilder: (BuildContext context, int index) {
-        final LaunchableApp app = _filteredApps[index];
-        final Uint8List? iconBytes = AppLauncherService.getCachedAppIcon(
-          app.id,
-        );
-        return Container(
-          key: ValueKey<String>(app.id),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Color(0x11000000))),
-          ),
-          child: ListTile(
-            dense: true,
-            leading: _buildLeadingIcon(iconBytes),
-            title: Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
-              app.hint,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            onTap: () => _launchApp(app),
-          ),
-        );
+    return NotificationListener<ScrollNotification>(
+      onNotification: (ScrollNotification notification) {
+        if (notification is ScrollStartNotification ||
+            notification is ScrollUpdateNotification) {
+          _isUserScrolling = true;
+          _iconLoadDebounce?.cancel();
+        } else if (notification is ScrollEndNotification) {
+          _isUserScrolling = false;
+          _scheduleVisibleIconLoad(immediate: true);
+        }
+        return false;
       },
+      child: ListView.builder(
+        controller: _scrollController,
+        itemCount: _filteredApps.length,
+        itemExtent: _rowHeight,
+        addAutomaticKeepAlives: false,
+        itemBuilder: (BuildContext context, int index) {
+          final LaunchableApp app = _filteredApps[index];
+          return _AppRow(
+            key: ValueKey<String>(app.id),
+            app: app,
+            onTap: () => _launchApp(app),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AppRow extends StatelessWidget {
+  const _AppRow({super.key, required this.app, required this.onTap});
+
+  final LaunchableApp app;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0x11000000))),
+      ),
+      child: ListTile(
+        dense: true,
+        leading: ValueListenableBuilder<Uint8List?>(
+          valueListenable: AppLauncherService.iconListenable(app.id),
+          builder: (BuildContext context, Uint8List? iconBytes, Widget? child) {
+            return _buildLeadingIcon(iconBytes);
+          },
+        ),
+        title: Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(app.hint, maxLines: 1, overflow: TextOverflow.ellipsis),
+        onTap: onTap,
+      ),
     );
   }
 
@@ -260,12 +288,17 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: Image.memory(
-        iconBytes,
-        width: 30,
-        height: 30,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
+      child: RepaintBoundary(
+        child: Image.memory(
+          iconBytes,
+          width: 30,
+          height: 30,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          cacheWidth: 60,
+          cacheHeight: 60,
+          filterQuality: FilterQuality.none,
+        ),
       ),
     );
   }

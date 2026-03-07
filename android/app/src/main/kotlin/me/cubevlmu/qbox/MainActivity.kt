@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream
 
 class MainActivity : FlutterActivity() {
     private val channelName = "quick_box/launcher"
+    private val iconSizePx = 56
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -20,6 +21,7 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getLaunchableApps" -> result.success(getLaunchableApps())
+                    "getIconCacheDir" -> result.success(getIconCacheDir())
                     "getAppIconsBatch" -> {
                         val packageNames = call.argument<List<String>>("packageNames")
                         if (packageNames.isNullOrEmpty()) {
@@ -90,17 +92,23 @@ class MainActivity : FlutterActivity() {
         return result
     }
 
+    private fun getIconCacheDir(): String {
+        val dir = java.io.File(cacheDir, "app_icon_cache")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir.absolutePath
+    }
+
     private fun drawableToPngBytes(drawable: Drawable): ByteArray? {
-        val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 64
-        val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 64
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(iconSizePx, iconSizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, canvas.width, canvas.height)
         drawable.draw(canvas)
 
         val output = ByteArrayOutputStream()
         return try {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+            bitmap.compress(Bitmap.CompressFormat.PNG, 92, output)
             output.toByteArray()
         } finally {
             output.close()

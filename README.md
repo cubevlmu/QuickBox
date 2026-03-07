@@ -1,6 +1,17 @@
+<!--
+ * @Author: cubevlmu khfahqp@gmail.com
+ * @LastEditors: cubevlmu khfahqp@gmail.com
+ * Copyright (c) 2026 by FlybirdGames, All Rights Reserved. 
+-->
+
 # Quick Box
 
 Quick Box is a Flutter-based Android app launcher focused on fast search and one-tap app launch.
+
+## Notice
+
+Old version of Quick Box is in branch legacy which using native android ui system.
+Now the main branch is the new version based on flutter ui engine.
 
 ## Features
 
