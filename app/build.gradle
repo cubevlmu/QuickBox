@@ -5,9 +5,9 @@ plugins {
 android {
     signingConfigs {
         release {
-            storeFile file('E:\\Projects\\StarForum\\forum\\android\\keystore\\release.jks')
-            storePassword 'cubevlmu2026'
-            keyPassword 'cubevlmu2026'
+            storeFile file('')
+            storePassword ''
+            keyPassword ''
             keyAlias 'release'
             v1SigningEnabled true
             v2SigningEnabled true
